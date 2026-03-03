@@ -47,11 +47,19 @@ func VerifyAttestationNoVerifySignature(
 	ctx context.Context,
 	beaconState state.ReadOnlyBeaconState,
 	att ethpb.Att,
-) error {
+) (err error) {
 	ctx, span := trace.StartSpan(ctx, "core.VerifyAttestationNoVerifySignature")
 	defer span.End()
 
-	if err := helpers.ValidateNilAttestation(att); err != nil {
+	defer func() {
+		if err != nil {
+			AttestationStats.RecordFailure(err)
+		} else {
+			AttestationStats.RecordSuccess()
+		}
+	}()
+
+	if err = helpers.ValidateNilAttestation(att); err != nil {
 		return err
 	}
 	currEpoch := time.CurrentEpoch(beaconState)
@@ -76,7 +84,7 @@ func VerifyAttestationNoVerifySignature(
 		}
 	}
 
-	if err := helpers.ValidateSlotTargetEpoch(att.GetData()); err != nil {
+	if err = helpers.ValidateSlotTargetEpoch(att.GetData()); err != nil {
 		return err
 	}
 
@@ -130,7 +138,6 @@ func VerifyAttestationNoVerifySignature(
 		committeeIndices := att.CommitteeBitsVal().BitIndices()
 		committees := make([][]primitives.ValidatorIndex, len(committeeIndices))
 		participantsCount := 0
-		var err error
 		for i, ci := range committeeIndices {
 			if uint64(ci) >= committeeCount {
 				return fmt.Errorf("committee index %d >= committee count %d", ci, committeeCount)
@@ -179,8 +186,9 @@ func VerifyAttestationNoVerifySignature(
 			return errors.New("no committee exist for this attestation")
 		}
 
-		if err := helpers.VerifyBitfieldLength(att.GetAggregationBits(), uint64(len(committee))); err != nil {
-			return errors.Wrap(err, "failed to verify aggregation bitfield")
+		if verifyErr := helpers.VerifyBitfieldLength(att.GetAggregationBits(), uint64(len(committee))); verifyErr != nil {
+			err = errors.Wrap(verifyErr, "failed to verify aggregation bitfield")
+			return err
 		}
 
 		indexedAtt, err = attestation.ConvertToIndexed(ctx, att, committee)
@@ -189,7 +197,8 @@ func VerifyAttestationNoVerifySignature(
 		}
 	}
 
-	return attestation.IsValidAttestationIndices(ctx, indexedAtt, params.BeaconConfig().MaxValidatorsPerCommittee, params.BeaconConfig().MaxCommitteesPerSlot)
+	err = attestation.IsValidAttestationIndices(ctx, indexedAtt, params.BeaconConfig().MaxValidatorsPerCommittee, params.BeaconConfig().MaxCommitteesPerSlot)
+	return err
 }
 
 // ProcessAttestationNoVerifySignature processes the attestation without verifying the attestation signature. This
