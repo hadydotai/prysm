@@ -10,6 +10,7 @@ import (
 
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/cache"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/altair"
+	coreBlocks "github.com/OffchainLabs/prysm/v7/beacon-chain/core/blocks"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/capella"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/deneb"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/electra"
@@ -339,6 +340,13 @@ func ProcessEpoch(ctx context.Context, state state.BeaconState) (state.BeaconSta
 				return nil, errors.Wrap(err, "could not process epoch with optimizations")
 			}
 		}
+
+		statsMap := coreBlocks.AttestationStats.SummaryAndReset()
+		log.WithFields(logrus.Fields{
+			"epoch":     time.CurrentEpoch(state),
+			"stats":     statsMap,
+			"successes": statsMap["success"],
+		}).Info("Attestation Verification Stats")
 	}
 	return state, err
 }

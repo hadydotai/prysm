@@ -24,6 +24,7 @@ import (
 	"github.com/OffchainLabs/prysm/v7/testing/assert"
 	"github.com/OffchainLabs/prysm/v7/testing/require"
 	"github.com/OffchainLabs/prysm/v7/testing/util"
+	logTest "github.com/sirupsen/logrus/hooks/test"
 )
 
 func init() {
@@ -786,4 +787,23 @@ func BenchmarkProcessSlots_Electra(b *testing.B) {
 			b.Fatalf("Failed to process slot %v", err)
 		}
 	}
+}
+
+func TestProcessEpoch_LogsStats(t *testing.T) {
+	logHook := logTest.NewGlobal()
+
+	// Seed some stats
+	blocks.AttestationStats.RecordSuccess()
+	blocks.AttestationStats.RecordSuccess()
+	blocks.AttestationStats.RecordFailure(fmt.Errorf("random error"))
+
+	st, _ := util.DeterministicGenesisState(t, params.BeaconConfig().MaxValidatorsPerCommittee)
+	require.NoError(t, st.SetSlot(params.BeaconConfig().SlotsPerEpoch-1)) // Move to end of epoch so CanProcessEpoch is true
+
+	newState, err := transition.ProcessEpoch(t.Context(), st)
+	require.NoError(t, err)
+	require.NotNil(t, newState)
+
+	require.LogsContain(t, logHook, "Attestation Verification Stats")
+	require.LogsContain(t, logHook, "successes")
 }
