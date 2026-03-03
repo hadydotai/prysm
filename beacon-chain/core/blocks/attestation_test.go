@@ -92,9 +92,22 @@ func TestVerifyAttestationNoVerifySignature_IncorrectSlotTargetEpoch(t *testing.
 			Target: &ethpb.Checkpoint{Root: make([]byte, 32)},
 		},
 	})
+
+	blocks.AttestationStats.SummaryAndReset()
 	wanted := "slot 32 does not match target epoch 0"
 	err := blocks.VerifyAttestationNoVerifySignature(context.TODO(), beaconState, att)
 	assert.ErrorContains(t, wanted, err)
+
+	summary := blocks.AttestationStats.SummaryAndReset()
+	assert.Equal(t, uint64(0), summary["success"], "Expected 0 successes for a failing attestation")
+	foundFailure := false
+	for reason, count := range summary {
+		if reason != "success" && count > 0 {
+			foundFailure = true
+			break
+		}
+	}
+	assert.Equal(t, true, foundFailure, "Expected a failure to be recorded in AttestationStats")
 }
 
 func TestProcessAttestationsNoVerify_OK(t *testing.T) {
@@ -193,8 +206,13 @@ func TestVerifyAttestationNoVerifySignature_OK(t *testing.T) {
 	require.NoError(t, beaconState.SetCurrentJustifiedCheckpoint(ckp))
 	require.NoError(t, beaconState.AppendCurrentEpochAttestations(&ethpb.PendingAttestation{}))
 
+	blocks.AttestationStats.SummaryAndReset()
+
 	err = blocks.VerifyAttestationNoVerifySignature(context.TODO(), beaconState, att)
 	assert.NoError(t, err)
+
+	summary := blocks.AttestationStats.SummaryAndReset()
+	assert.Equal(t, uint64(1), summary["success"], "Expected exactly 1 success recorded in AttestationStats")
 }
 
 func TestVerifyAttestationNoVerifySignature_BadAttIdx(t *testing.T) {
@@ -218,8 +236,22 @@ func TestVerifyAttestationNoVerifySignature_BadAttIdx(t *testing.T) {
 	copy(ckp.Root, "hello-world")
 	require.NoError(t, beaconState.SetCurrentJustifiedCheckpoint(ckp))
 	require.NoError(t, beaconState.AppendCurrentEpochAttestations(&ethpb.PendingAttestation{}))
+
+	blocks.AttestationStats.SummaryAndReset()
+
 	err := blocks.VerifyAttestationNoVerifySignature(context.TODO(), beaconState, att)
 	require.ErrorContains(t, "committee index 100 >= committee count 1", err)
+
+	summary := blocks.AttestationStats.SummaryAndReset()
+	assert.Equal(t, uint64(0), summary["success"], "Expected 0 successes for a failing attestation")
+	foundFailure := false
+	for reason, count := range summary {
+		if reason != "success" && count > 0 {
+			foundFailure = true
+			break
+		}
+	}
+	assert.Equal(t, true, foundFailure, "Expected a failure to be recorded in AttestationStats")
 }
 
 func TestVerifyAttestationNoVerifySignature_Electra(t *testing.T) {
